@@ -11,23 +11,27 @@ ARTIFACTS="$PROJECT_DIR/artifacts"
 echo "==> Building TypeScript..."
 npm --prefix "$PROJECT_DIR" run build
 
-echo "==> Assembling artifacts..."
+echo "==> Bundling with esbuild..."
 rm -rf "$ARTIFACTS" 2>/dev/null || true
 mkdir -p "$ARTIFACTS/bin"
+
+npx esbuild "$PROJECT_DIR/dist/src/driver.js" \
+  --bundle \
+  --platform=node \
+  --format=esm \
+  --outfile="$ARTIFACTS/bin/driver.js" \
+  --external:bufferutil \
+  --external:utf-8-validate \
+  --banner:js="import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
+
+# driver.json is loaded at runtime via fs, not imported
+cp "$PROJECT_DIR/dist/src/driver.json" "$ARTIFACTS/bin/driver.json"
 
 # Root-level driver.json (UC integration metadata)
 cp "$PROJECT_DIR/dist/src/driver.json" "$ARTIFACTS/driver.json"
 
-# bin/ contains the compiled driver and its dependencies
-cp "$PROJECT_DIR/dist/src/driver.js" "$ARTIFACTS/bin/driver.js"
-cp "$PROJECT_DIR/dist/src/driver.json" "$ARTIFACTS/bin/driver.json"
-
-# Install production dependencies into bin/
-cp "$PROJECT_DIR/package.json" "$ARTIFACTS/bin/package.json"
-npm install --production --prefix "$ARTIFACTS/bin" 2>&1 | tail -3
-
 echo "==> Creating archive..."
-tar czvf "$PROJECT_DIR/uc-intg-ps5-power.tar.gz" -C "$ARTIFACTS" .
+tar czvf "$PROJECT_DIR/uc-intg-ps5-power.tar.gz" --exclude='.DS_Store' -C "$ARTIFACTS" .
 
 SIZE=$(du -h "$PROJECT_DIR/uc-intg-ps5-power.tar.gz" | cut -f1)
 echo "==> Done: uc-intg-ps5-power.tar.gz ($SIZE)"
