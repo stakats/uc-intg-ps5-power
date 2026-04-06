@@ -122,11 +122,7 @@ async function standbyPS5(): Promise<void> {
 // Command handler
 // ---------------------------------------------------------------------------
 
-const cmdHandler: uc.CommandHandler = async function (
-  entity: uc.Entity,
-  cmdId: string,
-  _params?: { [key: string]: string | number | boolean }
-): Promise<uc.StatusCodes> {
+const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId: string): Promise<uc.StatusCodes> {
   if (!hasCredentials()) {
     console.error("[ps5] No credentials configured");
     return uc.StatusCodes.ServiceUnavailable;
