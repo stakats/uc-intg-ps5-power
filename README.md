@@ -47,7 +47,6 @@ Add the **PS5** entity to a profile or activity on your remote. Assign wake (on)
 
 ## Notes
 
-- Wake takes around 15-20 seconds to complete (network discovery + wake).
 - This integration uses [playactor](https://github.com/dhleong/playactor) under the hood.
 
 ## Development
