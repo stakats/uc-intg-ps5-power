@@ -390,25 +390,42 @@ async function standbyPS5(): Promise<void> {
 // Command handler
 // ---------------------------------------------------------------------------
 
+let commandInProgress = false;
+
 const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId: string): Promise<uc.StatusCodes> {
   if (!hasCredentials()) {
     console.error("[ps5] No credentials configured");
     return uc.StatusCodes.ServiceUnavailable;
   }
 
+  if (commandInProgress) {
+    console.log("[ps5] Command already in progress, ignoring");
+    return uc.StatusCodes.Ok;
+  }
+
   // Fire-and-forget: return Ok immediately so we don't hit the remote's
   // ~10s command timeout. playactor discovery + wake can take longer.
   switch (cmdId) {
     case "on":
-      wakePS5().catch((err) => {
-        console.error("[ps5] Wake failed:", err instanceof Error ? err.message : err);
-      });
+      commandInProgress = true;
+      wakePS5()
+        .catch((err) => {
+          console.error("[ps5] Wake failed:", err instanceof Error ? err.message : err);
+        })
+        .finally(() => {
+          commandInProgress = false;
+        });
       return uc.StatusCodes.Ok;
 
     case "off":
-      standbyPS5().catch((err) => {
-        console.error("[ps5] Standby failed:", err instanceof Error ? err.message : err);
-      });
+      commandInProgress = true;
+      standbyPS5()
+        .catch((err) => {
+          console.error("[ps5] Standby failed:", err instanceof Error ? err.message : err);
+        })
+        .finally(() => {
+          commandInProgress = false;
+        });
       return uc.StatusCodes.Ok;
 
     default:
