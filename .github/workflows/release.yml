@@ -31,3 +31,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: uc-intg-ps5-power.tar.gz
+          generate_release_notes: true
