@@ -1,89 +1,100 @@
-# PS5 Power — Unfolded Circle Integration Driver
+# PS5 Power — Unfolded Circle Integration
 
-Wake and put your PS5 into standby from your Unfolded Circle Remote 3, using [playactor](https://github.com/dhleong/playactor) under the hood.
+Wake and put your PS5 into standby from your [Unfolded Circle Remote 3](https://www.unfoldedcircle.com/).
 
-## Setup
+## Prerequisites
 
-### 1. Install dependencies
+- A PS5 on the same local network as your UC Remote 3
+- A computer (macOS, Windows, or Linux) to run the one-time pairing process
+- Node.js installed on that computer (see below)
 
-```bash
-npm install
-```
+## Step 1: Install Node.js
 
-### 2. Log in with playactor (one-time, on dev machine)
+You only need Node.js on your computer for the one-time pairing step. It is not installed on the remote.
 
-```bash
-npx playactor login
-```
+- **macOS**: `brew install node` or download from [nodejs.org](https://nodejs.org/)
+- **Windows**: Download the installer from [nodejs.org](https://nodejs.org/)
+- **Linux**: `sudo apt install nodejs npm` (Debian/Ubuntu) or see [nodejs.org](https://nodejs.org/)
 
-Follow the OAuth flow — it saves credentials to `~/.config/playactor/`. You only need to do this once.
-
-### 3. Verify playactor works
-
-Put your PS5 in rest mode, then:
+Verify it's installed:
 
 ```bash
-npx playactor wake
-npx playactor standby
+node --version
+npx --version
 ```
 
-Both should work before proceeding.
+## Step 2: Configure your PS5
 
-### 4. Build and run
+Before pairing, you need to enable two settings on your PS5. These are PS5 requirements for any Remote Play or wake-from-network functionality — they only need to be set once.
 
-```bash
-npm run build
-npm start
-```
+1. Go to **Settings > System > Remote Play** and turn on **Enable Remote Play**.
+2. Go to **Settings > System > Power Saving > Features Available in Rest Mode** and turn on **Stay Connected to the Internet**.
 
-Or with debug logging:
+Without these settings, the PS5 cannot be woken from rest mode over the network.
 
-```bash
-npm run start:debug
-```
+## Step 3: Pair with your PS5
 
-The driver starts a WebSocket server on port `9090` and advertises itself via mDNS.
+This is a one-time process that registers your computer with the PS5. It generates credentials that the integration uses to send wake and standby commands. You will not need to repeat this unless you re-pair.
 
-## Deploy to UC Remote 3
+1. **Power on your PS5** (it must be fully on, not in rest mode) and make sure it's on the same network as your computer.
 
-### Build the package
+2. On your computer, run:
 
-```bash
-npm run package
-```
+   ```bash
+   npx playactor login --ps5
+   ```
 
-This produces `uc-intg-ps5-power.tar.gz`.
+3. A browser window will open for you to **sign in to your PlayStation Network account**. After signing in, the page will show "redirect". **Copy the URL from your browser's address bar** and paste it back into the terminal.
 
-### Install on the remote
+4. On your PS5, go to **Settings > System > Remote Play > Link Device**. A PIN will appear on your TV.
 
-Upload the `.tar.gz` via the UC Remote web configurator:
+5. **Enter the PIN** into the terminal when prompted.
 
-**Settings → Integrations → Add → Upload custom integration**
+6. Pairing is complete. Your credentials are saved to:
+   - **macOS / Linux**: `~/.config/playactor/credentials.json`
+   - **Windows**: `C:\Users\<your-username>\.config\playactor\credentials.json`
 
-### Provision playactor credentials
+## Step 4: Install on UC Remote 3
 
-The `playactor login` OAuth flow requires a browser, so it must be run on your dev machine first:
+1. Download `uc-intg-ps5-power.tar.gz` from the [latest release](https://github.com/stakats/uc-intg-ps5-power/releases/latest).
 
-1. Run `npx playactor login` on your dev machine.
-2. When adding the integration on the remote, a setup screen will prompt you to paste the contents of `~/.config/playactor/credentials.json` from your dev machine.
-3. The integration saves the credentials to its on-device config directory.
+2. Open your UC Remote's web configurator (browse to your remote's IP address).
 
-To reconfigure credentials later, remove and re-add the integration.
+3. Go to **Settings > Integrations > Add > Upload custom integration** and upload the `.tar.gz` file.
 
-After setup, add the PS5 entity to a profile and assign wake/standby to buttons.
+## Step 5: Add your credentials
 
-## Development
+When the integration is added, a setup screen will appear with a text box.
 
-```bash
-npm run build          # Compile TypeScript
-npm start              # Run the driver
-npm run start:debug    # Run with debug logging
-npm test               # Run tests
-npm run package        # Build deployment archive
-npm run code-check     # Check formatting & linting
-```
+1. Open the `credentials.json` file from Step 3 in a text editor.
+2. **Copy the entire contents** and paste them into the text box on the remote's setup screen.
+3. Confirm the setup.
+
+## Step 6: Use it
+
+Add the **PS5** entity to a profile or activity on your remote. Assign wake (on) and standby (off) to buttons or include it in an activity power-on/off sequence.
+
+## Troubleshooting
+
+- **Pairing fails**: The PS5 must be fully powered on (not in rest mode) and on the same network as your computer.
+- **PS5 won't wake from rest mode**: Make sure you enabled both settings in Step 2 — Remote Play and Stay Connected to the Internet in rest mode. These are PS5 requirements.
+- **PS5 not found during pairing**: Try specifying the IP directly: `npx playactor login --ps5 --ip 192.168.1.XXX`
+- **Activity shows error after remote reboot**: The integration takes about 15 seconds to start after the remote reboots. Wait before triggering a PS5 activity.
+- **Reconfiguring credentials**: Remove the integration on the remote and re-add it to go through the setup screen again.
 
 ## Notes
 
 - State is optimistic — the remote shows ON/OFF based on the last command sent, not actual PS5 state.
-- playactor credentials are stored in `~/.config/playactor/` — if you move to another machine, re-run `playactor login`.
+- Wake takes around 15-20 seconds to complete (network discovery + wake).
+- This integration uses [playactor](https://github.com/dhleong/playactor) under the hood.
+
+## Development
+
+```bash
+npm install                # Install dependencies
+npm run build              # Compile TypeScript
+npm start                  # Run the driver locally
+npm test                   # Run tests
+npm run package            # Build deployment archive
+npm run code-check         # Check formatting & linting
+```
