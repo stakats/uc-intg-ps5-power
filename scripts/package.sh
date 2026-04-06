@@ -12,7 +12,7 @@ echo "==> Building TypeScript..."
 npm --prefix "$PROJECT_DIR" run build
 
 echo "==> Assembling artifacts..."
-rm -rf "$ARTIFACTS"
+rm -rf "$ARTIFACTS" 2>/dev/null || true
 mkdir -p "$ARTIFACTS/bin"
 
 # Root-level driver.json (UC integration metadata)

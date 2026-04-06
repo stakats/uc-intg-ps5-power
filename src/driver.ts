@@ -2,39 +2,28 @@
  * PS5 Power Integration Driver for Unfolded Circle Remote
  *
  * Exposes a Switch entity that wakes and puts the PS5 into standby
- * using the `playactor` CLI tool.
+ * using the playactor library (programmatic API, no shell required).
  *
  * Requirements:
- *   - playactor installed and logged in (run `npx playactor login` once)
- *   - Node.js v20+
+ *   - playactor credentials (paste during integration setup)
+ *   - Node.js v22+
  */
 
 import * as uc from "@unfoldedcircle/integration-api";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { Device } from "playactor/dist/device.js";
 import fs from "fs";
 import path from "path";
 
-const execAsync = promisify(exec);
-
-// Node.js 20.11 / 21.2
 const __dirname = import.meta.dirname;
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-// Resolve playactor binary from node_modules so it works reliably on-device
-const PLAYACTOR_BIN = path.join(__dirname, "..", "node_modules", ".bin", "playactor");
-
 const ENTITY_ID = "ps5_power";
 
 const driver = new uc.IntegrationAPI();
 
-/**
- * Return the directory where playactor expects to find its credentials.
- * On-device this is under the integration's config home; locally it falls back to ~/.config.
- */
 function getPlayactorCredentialsDir(): string {
   const configDir = driver.getConfigDirPath();
   return path.join(configDir, ".config", "playactor");
@@ -45,14 +34,9 @@ function getPlayactorCredentialsDir(): string {
  * its credentials at $HOME/.config/playactor/credentials.json.
  */
 function configurePlayactorHome(): void {
-  const configDir = driver.getConfigDirPath();
-  process.env.HOME = configDir;
-  console.log("[ps5] HOME set to:", configDir);
+  process.env.HOME = driver.getConfigDirPath();
 }
 
-/**
- * Check if playactor credentials exist on disk.
- */
 function hasCredentials(): boolean {
   return fs.existsSync(path.join(getPlayactorCredentialsDir(), "credentials.json"));
 }
@@ -81,7 +65,7 @@ function saveCredentials(data: { [key: string]: string }): uc.SetupAction {
   const credDir = getPlayactorCredentialsDir();
   fs.mkdirSync(credDir, { recursive: true });
   fs.writeFileSync(path.join(credDir, "credentials.json"), raw, "utf-8");
-  console.log("[ps5] Credentials saved to:", credDir);
+  console.log("[ps5] Credentials saved");
 
   configurePlayactorHome();
   return new uc.SetupComplete();
@@ -89,14 +73,10 @@ function saveCredentials(data: { [key: string]: string }): uc.SetupAction {
 
 async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
   if (msg instanceof uc.DriverSetupRequest) {
-    console.log("[ps5] Setup requested, reconfigure:", msg.reconfigure);
-    // The remote presents the setup_data_schema form first, then sends the
-    // user's input in setupData. Try to save credentials from it.
     return saveCredentials(msg.setupData);
   }
 
   if (msg instanceof uc.UserDataResponse) {
-    console.log("[ps5] Received user data response");
     return saveCredentials(msg.inputValues);
   }
 
@@ -113,27 +93,29 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
 driver.init(path.join(__dirname, "driver.json"), setupHandler);
 
-// If credentials already exist (from a previous setup), configure HOME immediately
 if (hasCredentials()) {
   configurePlayactorHome();
 }
 
 // ---------------------------------------------------------------------------
-// playactor helpers
+// playactor helpers (programmatic API — no shell needed)
 // ---------------------------------------------------------------------------
 
 async function wakePS5(): Promise<void> {
-  console.log("[ps5] Sending wake command...");
-  const { stdout, stderr } = await execAsync(`${PLAYACTOR_BIN} wake`, { timeout: 30000 });
-  if (stdout) console.log("[ps5] wake stdout:", stdout.trim());
-  if (stderr) console.warn("[ps5] wake stderr:", stderr.trim());
+  console.log("[ps5] Sending wake...");
+  await Device.any().wake();
+  console.log("[ps5] Wake completed");
 }
 
 async function standbyPS5(): Promise<void> {
-  console.log("[ps5] Sending standby command...");
-  const { stdout, stderr } = await execAsync(`${PLAYACTOR_BIN} standby`, { timeout: 30000 });
-  if (stdout) console.log("[ps5] standby stdout:", stdout.trim());
-  if (stderr) console.warn("[ps5] standby stderr:", stderr.trim());
+  console.log("[ps5] Sending standby...");
+  const connection = await Device.any().openConnection();
+  try {
+    await connection.standby();
+    console.log("[ps5] Standby completed");
+  } finally {
+    await connection.close();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -145,39 +127,40 @@ const cmdHandler: uc.CommandHandler = async function (
   cmdId: string,
   _params?: { [key: string]: string | number | boolean }
 ): Promise<uc.StatusCodes> {
-  console.log(`[ps5] Command received: ${cmdId} for entity: ${entity.id}`);
-
   if (!hasCredentials()) {
-    console.error("[ps5] No playactor credentials configured. Run setup first.");
+    console.error("[ps5] No credentials configured");
     return uc.StatusCodes.ServiceUnavailable;
   }
 
-  try {
-    switch (cmdId) {
-      case "on":
-        await wakePS5();
-        driver.updateEntityAttributes(ENTITY_ID, {
-          [uc.SwitchAttributes.State]: uc.SwitchStates.On
+  // Fire-and-forget: return Ok immediately so we don't hit the remote's
+  // ~10s command timeout. playactor discovery + wake can take longer than that.
+  switch (cmdId) {
+    case "on":
+      wakePS5()
+        .then(() => {
+          driver.updateEntityAttributes(ENTITY_ID, {
+            [uc.SwitchAttributes.State]: uc.SwitchStates.On
+          });
+        })
+        .catch((err) => {
+          console.error("[ps5] Wake failed:", err instanceof Error ? err.message : err);
         });
-        break;
+      return uc.StatusCodes.Ok;
 
-      case "off":
-        await standbyPS5();
-        driver.updateEntityAttributes(ENTITY_ID, {
-          [uc.SwitchAttributes.State]: uc.SwitchStates.Off
+    case "off":
+      standbyPS5()
+        .then(() => {
+          driver.updateEntityAttributes(ENTITY_ID, {
+            [uc.SwitchAttributes.State]: uc.SwitchStates.Off
+          });
+        })
+        .catch((err) => {
+          console.error("[ps5] Standby failed:", err instanceof Error ? err.message : err);
         });
-        break;
+      return uc.StatusCodes.Ok;
 
-      default:
-        console.warn(`[ps5] Unknown command: ${cmdId}`);
-        return uc.StatusCodes.NotImplemented;
-    }
-
-    return uc.StatusCodes.Ok;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[ps5] Command failed: ${message}`);
-    return uc.StatusCodes.ServerError;
+    default:
+      return uc.StatusCodes.NotImplemented;
   }
 };
 
@@ -202,33 +185,19 @@ driver.addAvailableEntity(ps5Switch);
 // ---------------------------------------------------------------------------
 
 driver.on(uc.Events.Connect, async () => {
-  console.log("[ps5] Remote connected");
   await driver.setDeviceState(uc.DeviceStates.Connected);
 });
 
 driver.on(uc.Events.Disconnect, async () => {
-  console.log("[ps5] Remote disconnected");
   await driver.setDeviceState(uc.DeviceStates.Disconnected);
 });
 
-driver.on(uc.Events.EnterStandby, () => {
-  console.log("[ps5] Remote entering standby");
-});
-
-driver.on(uc.Events.ExitStandby, () => {
-  console.log("[ps5] Remote exiting standby");
-});
-
 driver.on(uc.Events.SubscribeEntities, async (entityIds: string[]) => {
-  entityIds.forEach((entityId: string) => {
-    console.log(`[ps5] Subscribed entity: ${entityId}`);
-  });
+  entityIds.forEach((id) => console.log(`[ps5] Subscribed: ${id}`));
 });
 
 driver.on(uc.Events.UnsubscribeEntities, async (entityIds: string[]) => {
-  entityIds.forEach((entityId: string) => {
-    console.log(`[ps5] Unsubscribed entity: ${entityId}`);
-  });
+  entityIds.forEach((id) => console.log(`[ps5] Unsubscribed: ${id}`));
 });
 
 console.log("[ps5] PS5 Power integration driver started");
