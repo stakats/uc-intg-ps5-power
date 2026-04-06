@@ -1,0 +1,36 @@
+{
+  "driver_id": "ps5-power",
+  "version": "1.0.0",
+  "min_core_api": "0.20.0",
+  "name": {
+    "en": "PS5 Power"
+  },
+  "description": {
+    "en": "Wake and standby control for PlayStation 5 via playactor."
+  },
+  "icon": "uc:power-on",
+  "port": 9090,
+  "setup_data_schema": {
+    "title": {
+      "en": "Playactor Credentials"
+    },
+    "settings": [
+      {
+        "id": "playactor_credentials",
+        "label": {
+          "en": "Paste the contents of ~/.config/playactor/credentials.json from your dev machine"
+        },
+        "field": {
+          "textarea": {
+            "value": ""
+          }
+        }
+      }
+    ]
+  },
+  "developer": {
+    "name": "Sean Takats"
+  },
+  "home_page": "https://github.com/stakats",
+  "release_date": "2026-04-05"
+}

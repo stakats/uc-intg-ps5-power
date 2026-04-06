@@ -1,0 +1,52 @@
+{
+  "name": "uc-intg-ps5-power",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Unfolded Circle integration driver for PS5 wake/standby via playactor",
+  "main": "dist/src/driver.js",
+  "dependencies": {
+    "@unfoldedcircle/integration-api": "^0.3.0",
+    "playactor": "^0.4.1"
+  },
+  "devDependencies": {
+    "@ava/typescript": "^5.0.0",
+    "@types/debug": "^4.1.12",
+    "@types/node": "^22.5.5",
+    "@types/ws": "^8.5.12",
+    "@typescript-eslint/eslint-plugin": "^8.8.1",
+    "@typescript-eslint/parser": "^8.8.1",
+    "ava": "^6.1.3",
+    "copyfiles": "^2.4.1",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-semistandard": "^17.0.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-promise": "^6.6.0",
+    "prettier": "^3.3.3",
+    "ts-node": "^10.9.2",
+    "typescript": "5.5.x"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "code-check": "prettier --check . && eslint .",
+    "lint": "eslint --fix",
+    "build": "tsc && copyfiles \"./src/**/*.json\" dist/",
+    "start": "node dist/src/driver.js",
+    "start:debug": "DEBUG=ucapi:* node dist/src/driver.js",
+    "test": "npm run build && ava dist/test/**/*.js",
+    "package": "bash scripts/package.sh"
+  },
+  "keywords": [
+    "uc",
+    "unfoldedcircle",
+    "ps5",
+    "playstation",
+    "integration"
+  ],
+  "author": "Sean Takats",
+  "license": "Apache-2.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.16.0"
+  }
+}
