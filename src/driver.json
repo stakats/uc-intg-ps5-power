@@ -1,6 +1,6 @@
 {
   "driver_id": "ps5-power",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "min_core_api": "0.20.0",
   "name": {
     "en": "PS5 Power"
@@ -12,17 +12,17 @@
   "port": 9090,
   "setup_data_schema": {
     "title": {
-      "en": "Playactor Credentials"
+      "en": "PS5 Power Setup"
     },
     "settings": [
       {
-        "id": "playactor_credentials",
+        "id": "_setup",
         "label": {
-          "en": "Paste the contents of ~/.config/playactor/credentials.json from your dev machine"
+          "en": "This will guide you through pairing with your PS5. Your PS5 must be powered on and on the same network."
         },
         "field": {
-          "textarea": {
-            "value": ""
+          "checkbox": {
+            "value": true
           }
         }
       }
