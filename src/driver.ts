@@ -1,12 +1,12 @@
 /**
- * PS5 Power Integration Driver for Unfolded Circle Remote
+ * PlayStation Power Integration Driver for Unfolded Circle Remote
  *
- * Exposes a Switch entity that wakes and puts the PS5 into standby
- * using the playactor library. Includes a guided setup flow for
- * PSN OAuth login and PS5 device registration.
+ * Exposes a Switch entity that wakes and puts a PlayStation (PS4/PS5)
+ * into standby using the playactor library. Includes a guided setup
+ * flow for PSN OAuth login and device registration.
  *
  * Requirements:
- *   - PS5 on the same network, powered on for initial setup
+ *   - PS4 or PS5 on the same network, powered on for initial setup
  *   - Node.js v22+ (on-device)
  */
 
@@ -230,9 +230,9 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
       // Show PIN instructions
       setupStep = 4;
       return new uc.RequestUserConfirmation(
-        { en: "Step 3: Pair with your PS5" },
+        { en: "Step 3: Pair with your PlayStation" },
         {
-          en: "On your PS5, go to Settings > System > Remote Play > Pair Device. An 8-digit PIN will appear on your TV.\n\nMake sure your PS5 is powered on (not in rest mode) and on the same network as your remote."
+          en: "On your PlayStation, navigate to the Remote Play pairing screen:\n\nPS5: Settings > System > Remote Play > Pair Device\nPS4: Settings > Remote Play Connection Settings > Add Device\n\nAn 8-digit PIN will appear on your TV. Make sure your PlayStation is powered on (not in rest mode) and on the same network as your remote."
         }
       );
     }
@@ -246,16 +246,16 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
       }
 
       try {
-        console.log("[ps5] Discovering PS5 on network...");
+        console.log("[ps5] Discovering PlayStation on network...");
         const discovered = await Device.any().discover();
         console.log(`[ps5] Found ${discovered.name} (${discovered.id}) — ${discovered.status}`);
 
         if (discovered.status !== DeviceStatus.AWAKE) {
-          console.error("[ps5] PS5 must be powered on for registration");
+          console.error("[ps5] PlayStation must be powered on for registration");
           return new uc.SetupError(uc.IntegrationSetupError.ConnectionRefused);
         }
 
-        console.log("[ps5] Registering with PS5...");
+        console.log("[ps5] Registering with PlayStation...");
         const registration = new RemotePlayRegistration();
         const regResult = await registration.register(discovered, {
           accountId: setupAccountId!,
@@ -312,7 +312,7 @@ if (hasCredentials()) {
 }
 
 // ---------------------------------------------------------------------------
-// PS5 state checking via playactor discover (UDP, does not wake device)
+// PlayStation state checking via playactor discover (UDP, does not wake device)
 // ---------------------------------------------------------------------------
 
 function delay(ms: number): Promise<void> {
@@ -437,7 +437,7 @@ const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId:
 // Entity
 // ---------------------------------------------------------------------------
 
-const ps5Switch = new uc.Switch(ENTITY_ID, "PS5", {
+const ps5Switch = new uc.Switch(ENTITY_ID, "PlayStation", {
   features: [uc.SwitchFeatures.OnOff],
   attributes: {
     [uc.SwitchAttributes.State]: uc.SwitchStates.Off
@@ -471,4 +471,4 @@ driver.on(uc.Events.UnsubscribeEntities, async (entityIds: string[]) => {
   entityIds.forEach((id) => console.log(`[ps5] Unsubscribed: ${id}`));
 });
 
-console.log("[ps5] PS5 Power integration driver started");
+console.log("[ps5] PlayStation Power integration driver started");
