@@ -27,8 +27,9 @@ npx esbuild "$PROJECT_DIR/dist/src/driver.js" \
 # driver.json is loaded at runtime via fs, not imported
 cp "$PROJECT_DIR/dist/src/driver.json" "$ARTIFACTS/bin/driver.json"
 
-# Root-level driver.json (UC integration metadata)
+# Root-level driver.json (UC integration metadata) and custom icon
 cp "$PROJECT_DIR/dist/src/driver.json" "$ARTIFACTS/driver.json"
+cp "$PROJECT_DIR/ps.png" "$ARTIFACTS/ps.png"
 
 echo "==> Creating archive..."
 tar czvf "$PROJECT_DIR/uc-intg-ps5-power.tar.gz" --exclude='.DS_Store' -C "$ARTIFACTS" .

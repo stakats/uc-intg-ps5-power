@@ -8,7 +8,7 @@
   "description": {
     "en": "Wake and standby control for PlayStation 4/5 via playactor."
   },
-  "icon": "uc:power-on",
+  "icon": "custom:ps.png",
   "port": 9090,
   "setup_data_schema": {
     "title": {
