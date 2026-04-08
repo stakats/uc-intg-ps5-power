@@ -9,16 +9,18 @@ Wake and put your PlayStation (PS4 or PS5) into standby from your [Unfolded Circ
 
 ## Step 1: Configure your PlayStation
 
-Before setup, you need to enable two settings on your PlayStation. These are PlayStation requirements for any Remote Play or wake-from-network functionality — they only need to be set once.
+Before setup, enable these settings on your PlayStation so it can be woken over the network. These only need to be set once.
 
-1. Enable Remote Play:
-   - **PS5**: Settings > System > Remote Play > Enable Remote Play
-   - **PS4**: Settings > Remote Play Connection Settings > Enable Remote Play
-2. Enable network in rest mode:
-   - **PS5**: Settings > System > Power Saving > Features Available in Rest Mode > Stay Connected to the Internet
-   - **PS4**: Settings > Power Save Settings > Set Features Available in Rest Mode > Stay Connected to the Internet
+**PS5:**
 
-Without these settings, the PlayStation cannot be woken from rest mode over the network.
+1. Settings > System > Remote Play > **Enable Remote Play**
+2. Settings > System > Power Saving > Features Available in Rest Mode > **Stay Connected to the Internet**
+
+**PS4:**
+
+1. Settings > Remote Play Connection Settings > **Enable Remote Play**
+2. Settings > Power Save Settings > Set Features Available in Rest Mode > **Stay Connected to the Internet**
+3. Settings > Power Save Settings > Set Features Available in Rest Mode > **Enable Turning On PS4 from Network**
 
 ## Step 2: Install on UC Remote 3
 
