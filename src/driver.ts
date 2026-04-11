@@ -307,7 +307,10 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
 driver.init(path.join(__dirname, "driver.json"), setupHandler);
 
-if (hasCredentials()) {
+const credentialsExist = hasCredentials();
+console.log(`[ps5] Config dir: ${driver.getConfigDirPath()}`);
+console.log(`[ps5] Credentials exist: ${credentialsExist}`);
+if (credentialsExist) {
   configurePlayactorHome();
 }
 
@@ -393,6 +396,8 @@ async function standbyPS5(): Promise<void> {
 let commandInProgress = false;
 
 const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId: string): Promise<uc.StatusCodes> {
+  console.log(`[ps5] Command received: ${cmdId}`);
+
   if (!hasCredentials()) {
     console.error("[ps5] No credentials configured");
     return uc.StatusCodes.ServiceUnavailable;
@@ -429,6 +434,7 @@ const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId:
       return uc.StatusCodes.Ok;
 
     default:
+      console.error(`[ps5] Unknown command: ${cmdId}`);
       return uc.StatusCodes.NotImplemented;
   }
 };
