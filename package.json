@@ -12,7 +12,7 @@
     "@ava/typescript": "^5.0.0",
     "@types/debug": "^4.1.12",
     "@types/node": "^22.5.5",
-    "@types/ws": "^8.5.12",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.8.1",
     "@typescript-eslint/parser": "^8.8.1",
     "ava": "^6.1.3",
