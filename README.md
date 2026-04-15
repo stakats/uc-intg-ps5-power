@@ -34,20 +34,30 @@ Before setup, enable these settings on your PlayStation so it can be woken over 
 
 The integration includes a guided setup flow. Make sure your PlayStation is **powered on** (not in rest mode) before starting.
 
-1. When adding the integration, you'll be shown a PlayStation Network sign-in URL. Open it in a browser on your phone or computer and sign in.
-2. After signing in, copy the redirect URL from your browser's address bar and paste it when prompted.
-3. On your PlayStation, navigate to the pairing screen:
+1. On the first setup screen, pick **Set up new device** from the **Setup mode** dropdown. (The other option, **Restore from backup**, is for re-using a previously saved configuration — see [Managing your configuration](#managing-your-configuration) below.)
+2. You'll be shown a PlayStation Network sign-in URL. Open it in a browser on your phone or computer and sign in.
+3. After signing in, copy the redirect URL from your browser's address bar and paste it when prompted.
+4. On your PlayStation, navigate to the pairing screen:
 
    - **PS5**: Settings > System > Remote Play > Pair Device
    - **PS4**: Settings > Remote Play Connection Settings > Add Device
 
    Enter the 8-digit PIN shown on your TV when prompted.
 
-4. The integration will register with your PlayStation and complete setup.
+5. The integration will register with your PlayStation and complete setup.
 
 ## Step 4: Use it
 
 Add the **PlayStation** entity to a profile or activity on your remote. Assign wake (on) and standby (off) to buttons or include it in an activity power-on/off sequence.
+
+## Managing your configuration
+
+Once the integration is installed, open its settings on the remote to reach a reconfigure menu with four options:
+
+- **Re-pair device** — re-run the OAuth sign-in and PIN pairing flow. Use this if credentials are lost or your PlayStation stops responding to wake/standby.
+- **Create configuration backup** — displays your stored credentials as a JSON blob you can copy and save somewhere safe. Handy before firmware updates, factory resets, or migrating to another UC Remote.
+- **Restore configuration from backup** — paste a previously saved backup to re-populate credentials without redoing OAuth or pairing.
+- **Delete configuration** — wipe stored credentials while leaving the integration installed.
 
 ## Troubleshooting
 
@@ -55,7 +65,7 @@ Add the **PlayStation** entity to a profile or activity on your remote. Assign w
 - **Won't wake from rest mode**: Make sure you enabled both settings in Step 1 — Remote Play and Stay Connected to the Internet in rest mode.
 - **PlayStation not found during pairing**: Ensure your PlayStation and UC Remote are on the same local network.
 - **Activity shows error after remote reboot**: The integration takes about 15 seconds to start after the remote reboots. Wait before triggering an activity.
-- **Reconfiguring credentials**: Remove the integration on the remote and re-add it to go through the setup flow again.
+- **Reconfiguring credentials**: Open the integration's settings and choose **Re-pair device** from the reconfigure menu. Use **Delete configuration** followed by a fresh setup only as a last resort.
 
 ## Notes
 
