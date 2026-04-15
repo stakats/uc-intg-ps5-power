@@ -127,3 +127,4 @@ dist
 # Packaging artifacts
 artifacts/
 uc-intg-ps5-power.tar.gz
+test-builds/

@@ -1,6 +1,6 @@
 {
   "driver_id": "ps5-power",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "min_core_api": "0.20.0",
   "name": {
     "en": "PlayStation Power"
@@ -14,19 +14,7 @@
     "title": {
       "en": "PlayStation Power Setup"
     },
-    "settings": [
-      {
-        "id": "_setup",
-        "label": {
-          "en": "This will guide you through pairing with your PlayStation. Your PS4 or PS5 must be powered on and on the same network."
-        },
-        "field": {
-          "checkbox": {
-            "value": true
-          }
-        }
-      }
-    ]
+    "settings": []
   },
   "developer": {
     "name": "Sean Takats"

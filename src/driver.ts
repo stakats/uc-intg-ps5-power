@@ -181,7 +181,7 @@ async function fetchAccountId(accessToken: string): Promise<string> {
 // State persisted across setup handler invocations
 type SetupMode = "idle" | "configure" | "restore";
 let setupMode: SetupMode = "idle";
-let setupOAuthStep = 0; // 0=not started, 1=showed PSN URL, 2=showed redirect instructions, 3=got redirect URL, 4=showed PIN instructions, 5=waiting for PIN
+let setupOAuthStep = 0; // 0=not started, 3=waiting for redirect URL, 5=waiting for PIN
 let setupAccountId: string | null = null;
 
 const REDIRECT_URL_FIELD = "redirect_url";
@@ -276,28 +276,32 @@ function showRestoreScreen(): uc.SetupAction {
 
 // --- OAuth + PIN configure flow screens ---
 
-function showPSNLoginScreen(): uc.SetupAction {
-  return new uc.RequestUserConfirmation(
-    { en: "Step 1: Sign in to PlayStation Network" },
-    {
-      en:
-        'Open the following URL in a browser on your phone or computer and sign in to your PlayStation Network account. After signing in, you will see a page that just says "redirect" — this is expected.\n\n' +
-        LOGIN_URL
-    }
-  );
-}
-
-function showRedirectInstructions(): uc.SetupAction {
-  return new uc.RequestUserConfirmation(
-    { en: "Step 2: Copy the redirect URL" },
-    {
-      en: "After signing in, your browser's address bar will show a URL that looks like:\n\nremoteplay.dl.playstation.net/remoteplay/redirect?code=XXXXX...\n\nCopy the full URL from the address bar. You will paste it on the next screen."
-    }
-  );
-}
-
 function showRedirectUrlInput(): uc.SetupAction {
-  return new uc.RequestUserInput({ en: "Paste Redirect URL" }, [
+  return new uc.RequestUserInput({ en: "Sign in to PlayStation Network" }, [
+    {
+      id: "info_login",
+      label: { en: "Step 1: Sign in" },
+      field: {
+        label: {
+          value: {
+            en:
+              'Open the following URL in a browser on your phone or computer and sign in to your PlayStation Network account. After signing in, you will see a page that just says "redirect" — this is expected.\n\n' +
+              LOGIN_URL
+          }
+        }
+      }
+    },
+    {
+      id: "info_copy",
+      label: { en: "Step 2: Copy the redirect URL" },
+      field: {
+        label: {
+          value: {
+            en: "After signing in, your browser's address bar will show a URL that looks like:\n\nremoteplay.dl.playstation.net/remoteplay/redirect?code=XXXXX...\n\nCopy the full URL from the address bar and paste it below."
+          }
+        }
+      }
+    },
     {
       id: REDIRECT_URL_FIELD,
       label: { en: "Redirect URL" },
@@ -306,17 +310,19 @@ function showRedirectUrlInput(): uc.SetupAction {
   ]);
 }
 
-function showPINInstructions(): uc.SetupAction {
-  return new uc.RequestUserConfirmation(
-    { en: "Step 3: Pair with your PlayStation" },
-    {
-      en: "On your PlayStation, navigate to the Remote Play pairing screen:\n\nPS5: Settings > System > Remote Play > Pair Device\nPS4: Settings > Remote Play Connection Settings > Add Device\n\nAn 8-digit PIN will appear on your TV. Make sure your PlayStation is powered on (not in rest mode) and on the same network as your remote."
-    }
-  );
-}
-
 function showPINInput(): uc.SetupAction {
-  return new uc.RequestUserInput({ en: "Enter PIN" }, [
+  return new uc.RequestUserInput({ en: "Pair with your PlayStation" }, [
+    {
+      id: "info_pair",
+      label: { en: "Open the pairing screen" },
+      field: {
+        label: {
+          value: {
+            en: "On your PlayStation, navigate to the Remote Play pairing screen:\n\nPS5: Settings > System > Remote Play > Pair Device\n\nPS4: Settings > Remote Play Connection Settings > Add Device\n\nAn 8-digit PIN will appear on your TV. Make sure your PlayStation is powered on (not in rest mode) and on the same network as your remote."
+          }
+        }
+      }
+    },
     {
       id: PIN_FIELD,
       label: { en: "8-digit PIN from your TV" },
@@ -365,8 +371,8 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
       if (action === "configure") {
         setupMode = "configure";
-        setupOAuthStep = 1;
-        return showPSNLoginScreen();
+        setupOAuthStep = 3;
+        return showRedirectUrlInput();
       }
 
       // No action yet — show the reconfigure menu
@@ -394,30 +400,6 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
     // Show initial setup screen
     return showInitialSetupScreen();
-  }
-
-  if (msg instanceof uc.UserConfirmationResponse) {
-    if (!msg.confirm) {
-      console.log("[ps5] Setup cancelled by user");
-      resetSetupState();
-      return new uc.SetupError();
-    }
-
-    // OAuth + PIN confirmation steps
-    if (setupOAuthStep === 1) {
-      setupOAuthStep = 2;
-      return showRedirectInstructions();
-    }
-    if (setupOAuthStep === 2) {
-      setupOAuthStep = 3;
-      return showRedirectUrlInput();
-    }
-    if (setupOAuthStep === 4) {
-      setupOAuthStep = 5;
-      return showPINInput();
-    }
-
-    return new uc.SetupError();
   }
 
   if (msg instanceof uc.UserDataResponse) {
@@ -450,8 +432,8 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
         return new uc.SetupError(uc.IntegrationSetupError.AuthorizationError);
       }
 
-      setupOAuthStep = 4;
-      return showPINInstructions();
+      setupOAuthStep = 5;
+      return showPINInput();
     }
 
     // --- OAuth Step 5: PIN submitted ---
@@ -553,8 +535,8 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
     }
     if (action === "configure") {
       setupMode = "configure";
-      setupOAuthStep = 1;
-      return showPSNLoginScreen();
+      setupOAuthStep = 3;
+      return showRedirectUrlInput();
     }
 
     // --- Backup screen submitted without action (user copied data, just complete) ---
@@ -572,8 +554,8 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
       }
       // User chose "Set up new device" — start OAuth flow
       setupMode = "configure";
-      setupOAuthStep = 1;
-      return showPSNLoginScreen();
+      setupOAuthStep = 3;
+      return showRedirectUrlInput();
     }
 
     return new uc.SetupError();
