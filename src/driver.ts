@@ -3,7 +3,8 @@
  *
  * Exposes a Switch entity that wakes and puts a PlayStation (PS4/PS5)
  * into standby using the playactor library. Includes a guided setup
- * flow for PSN OAuth login and device registration.
+ * flow for PSN OAuth login and device registration, with backup/restore
+ * support compatible with Integration Manager.
  *
  * Requirements:
  *   - PS4 or PS5 on the same network, powered on for initial setup
@@ -58,11 +59,54 @@ function hasCredentials(): boolean {
   return fs.existsSync(getCredentialsPath());
 }
 
+function readCredentialsJson(): string | null {
+  try {
+    const content = fs.readFileSync(getCredentialsPath(), "utf-8");
+    JSON.parse(content); // validate
+    return content;
+  } catch {
+    return null;
+  }
+}
+
+function restoreCredentialsJson(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      console.error("[ps5] Restore failed: expected JSON object");
+      return false;
+    }
+    if (Object.keys(parsed).length === 0) {
+      console.error("[ps5] Restore failed: empty credentials");
+      return false;
+    }
+    const credDir = getPlayactorCredentialsDir();
+    fs.mkdirSync(credDir, { recursive: true });
+    fs.writeFileSync(getCredentialsPath(), JSON.stringify(parsed, null, 2), "utf-8");
+    configurePlayactorHome();
+    console.log("[ps5] Credentials restored");
+    return true;
+  } catch (err) {
+    console.error("[ps5] Restore failed:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+function deleteCredentials(): void {
+  try {
+    if (fs.existsSync(getCredentialsPath())) {
+      fs.unlinkSync(getCredentialsPath());
+      console.log("[ps5] Credentials deleted");
+    }
+  } catch (err) {
+    console.error("[ps5] Delete failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 function writeCredentials(deviceId: string, credentials: Record<string, unknown>): void {
   const credDir = getPlayactorCredentialsDir();
   fs.mkdirSync(credDir, { recursive: true });
 
-  // Merge with existing credentials file (may have multiple devices)
   let existing: Record<string, unknown> = {};
   const credPath = getCredentialsPath();
   if (fs.existsSync(credPath)) {
@@ -128,81 +172,260 @@ async function fetchAccountId(accessToken: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Setup flow — multi-step state machine
+// Setup flow — multi-step state machine with backup/restore
+//
+// Field IDs follow ucapi-framework conventions for Integration Manager
+// compatibility: choice, restore_from_backup, backup_data, restore_data
 // ---------------------------------------------------------------------------
 
 // State persisted across setup handler invocations
-let setupStep = 0;
+type SetupMode = "idle" | "configure" | "restore";
+let setupMode: SetupMode = "idle";
+let setupOAuthStep = 0; // 0=not started, 1=showed PSN URL, 2=showed redirect instructions, 3=got redirect URL, 4=showed PIN instructions, 5=waiting for PIN
 let setupAccountId: string | null = null;
 
 const REDIRECT_URL_FIELD = "redirect_url";
 const PIN_FIELD = "pin";
 
-async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
-  // Step 1: Initial request — show PSN login URL
-  if (msg instanceof uc.DriverSetupRequest) {
-    console.log("[ps5] Setup started");
-    setupStep = 1;
-    setupAccountId = null;
+function resetSetupState(): void {
+  setupMode = "idle";
+  setupOAuthStep = 0;
+  setupAccountId = null;
+}
 
-    return new uc.RequestUserConfirmation(
-      { en: "Step 1: Sign in to PlayStation Network" },
-      {
-        en:
-          'Open the following URL in a browser on your phone or computer and sign in to your PlayStation Network account. After signing in, you will see a page that just says "redirect" — this is expected.\n\n' +
-          LOGIN_URL
+// --- Initial setup screen (fresh install) ---
+
+function showInitialSetupScreen(): uc.SetupAction {
+  return new uc.RequestUserInput({ en: "PlayStation Power Setup" }, [
+    {
+      id: "restore_from_backup",
+      label: { en: "Setup mode" },
+      field: {
+        dropdown: {
+          value: "false",
+          items: [
+            { id: "false", label: { en: "Set up new device" } },
+            { id: "true", label: { en: "Restore from backup" } }
+          ]
+        }
       }
-    );
+    }
+  ]);
+}
+
+// --- Reconfigure screen (existing install) ---
+
+function showReconfigureScreen(): uc.SetupAction {
+  return new uc.RequestUserInput({ en: "PlayStation Power" }, [
+    {
+      id: "choice",
+      label: { en: "Action" },
+      field: {
+        dropdown: {
+          value: "configure",
+          items: [
+            { id: "configure", label: { en: "Re-pair device" } },
+            { id: "backup", label: { en: "Create configuration backup" } },
+            {
+              id: "restore",
+              label: { en: "Restore configuration from backup" }
+            },
+            { id: "delete_config", label: { en: "Delete configuration" } }
+          ]
+        }
+      }
+    }
+  ]);
+}
+
+// --- Backup screen ---
+
+function showBackupScreen(): uc.SetupAction {
+  const json = readCredentialsJson() ?? "{}";
+  return new uc.RequestUserInput({ en: "Configuration Backup" }, [
+    {
+      id: "info",
+      label: { en: "Backup" },
+      field: {
+        label: {
+          value: {
+            en: "Copy the data below and save it in a safe place. You can use this to restore your configuration after an integration update."
+          }
+        }
+      }
+    },
+    {
+      id: "backup_data",
+      label: { en: "Backup data" },
+      field: { textarea: { value: json } }
+    }
+  ]);
+}
+
+// --- Restore screen ---
+
+function showRestoreScreen(): uc.SetupAction {
+  return new uc.RequestUserInput({ en: "Restore Configuration" }, [
+    {
+      id: "restore_data",
+      label: { en: "Paste the configuration backup data below" },
+      field: { textarea: { value: "" } }
+    }
+  ]);
+}
+
+// --- OAuth + PIN configure flow screens ---
+
+function showPSNLoginScreen(): uc.SetupAction {
+  return new uc.RequestUserConfirmation(
+    { en: "Step 1: Sign in to PlayStation Network" },
+    {
+      en:
+        'Open the following URL in a browser on your phone or computer and sign in to your PlayStation Network account. After signing in, you will see a page that just says "redirect" — this is expected.\n\n' +
+        LOGIN_URL
+    }
+  );
+}
+
+function showRedirectInstructions(): uc.SetupAction {
+  return new uc.RequestUserConfirmation(
+    { en: "Step 2: Copy the redirect URL" },
+    {
+      en: "After signing in, your browser's address bar will show a URL that looks like:\n\nremoteplay.dl.playstation.net/remoteplay/redirect?code=XXXXX...\n\nCopy the full URL from the address bar. You will paste it on the next screen."
+    }
+  );
+}
+
+function showRedirectUrlInput(): uc.SetupAction {
+  return new uc.RequestUserInput({ en: "Paste Redirect URL" }, [
+    {
+      id: REDIRECT_URL_FIELD,
+      label: { en: "Redirect URL" },
+      field: { textarea: { value: "" } }
+    }
+  ]);
+}
+
+function showPINInstructions(): uc.SetupAction {
+  return new uc.RequestUserConfirmation(
+    { en: "Step 3: Pair with your PlayStation" },
+    {
+      en: "On your PlayStation, navigate to the Remote Play pairing screen:\n\nPS5: Settings > System > Remote Play > Pair Device\nPS4: Settings > Remote Play Connection Settings > Add Device\n\nAn 8-digit PIN will appear on your TV. Make sure your PlayStation is powered on (not in rest mode) and on the same network as your remote."
+    }
+  );
+}
+
+function showPINInput(): uc.SetupAction {
+  return new uc.RequestUserInput({ en: "Enter PIN" }, [
+    {
+      id: PIN_FIELD,
+      label: { en: "8-digit PIN from your TV" },
+      field: { text: { value: "" } }
+    }
+  ]);
+}
+
+// --- Main setup handler ---
+
+async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
+  if (msg instanceof uc.DriverSetupRequest) {
+    console.log(`[ps5] Setup started (reconfigure: ${msg.reconfigure})`);
+    resetSetupState();
+
+    if (msg.reconfigure) {
+      // Reconfigure: check for Integration Manager driven actions in setupData
+      const setupData = msg.setupData ?? {};
+      const action = String(setupData.action ?? setupData.choice ?? "").toLowerCase();
+
+      if (action === "backup") {
+        const provided = typeof setupData.backup_data === "string" ? setupData.backup_data.trim() : "";
+        if (!provided || provided === "[]") {
+          return showBackupScreen();
+        }
+        // Integration Manager sent backup_data back — treat as complete
+        return new uc.SetupComplete();
+      }
+
+      if (action === "restore") {
+        const restoreData =
+          (typeof setupData.restore_data === "string" && setupData.restore_data.trim()
+            ? setupData.restore_data
+            : null) ??
+          (typeof setupData.backup_data === "string" && setupData.backup_data.trim() ? setupData.backup_data : null);
+
+        if (restoreData) {
+          if (restoreCredentialsJson(restoreData)) {
+            return new uc.SetupComplete();
+          }
+          return new uc.SetupError(uc.IntegrationSetupError.Other);
+        }
+        setupMode = "restore";
+        return showRestoreScreen();
+      }
+
+      if (action === "configure") {
+        setupMode = "configure";
+        setupOAuthStep = 1;
+        return showPSNLoginScreen();
+      }
+
+      // No action yet — show the reconfigure menu
+      return showReconfigureScreen();
+    }
+
+    // Fresh setup: check for restore_from_backup from Integration Manager
+    const setupData = msg.setupData ?? {};
+    const restoreMode = String(setupData.restore_from_backup ?? "").toLowerCase() === "true";
+
+    if (restoreMode) {
+      const restoreData =
+        (typeof setupData.restore_data === "string" && setupData.restore_data.trim() ? setupData.restore_data : null) ??
+        (typeof setupData.backup_data === "string" && setupData.backup_data.trim() ? setupData.backup_data : null);
+
+      if (restoreData) {
+        if (restoreCredentialsJson(restoreData)) {
+          return new uc.SetupComplete();
+        }
+        return new uc.SetupError(uc.IntegrationSetupError.Other);
+      }
+      setupMode = "restore";
+      return showRestoreScreen();
+    }
+
+    // Show initial setup screen
+    return showInitialSetupScreen();
   }
 
   if (msg instanceof uc.UserConfirmationResponse) {
     if (!msg.confirm) {
       console.log("[ps5] Setup cancelled by user");
+      resetSetupState();
       return new uc.SetupError();
     }
 
-    if (setupStep === 1) {
-      // After PSN login confirmation — show redirect URL instructions
-      setupStep = 2;
-      return new uc.RequestUserConfirmation(
-        { en: "Step 2: Copy the redirect URL" },
-        {
-          en: "After signing in, your browser's address bar will show a URL that looks like:\n\nremoteplay.dl.playstation.net/remoteplay/redirect?code=XXXXX...\n\nCopy the full URL from the address bar. You will paste it on the next screen."
-        }
-      );
+    // OAuth + PIN confirmation steps
+    if (setupOAuthStep === 1) {
+      setupOAuthStep = 2;
+      return showRedirectInstructions();
     }
-
-    if (setupStep === 2) {
-      // After redirect URL instructions — show input field
-      setupStep = 3;
-      return new uc.RequestUserInput({ en: "Paste Redirect URL" }, [
-        {
-          id: REDIRECT_URL_FIELD,
-          label: { en: "Redirect URL" },
-          field: { text: { value: "" } }
-        }
-      ]);
+    if (setupOAuthStep === 2) {
+      setupOAuthStep = 3;
+      return showRedirectUrlInput();
     }
-
-    if (setupStep === 4) {
-      // After PIN instructions — show PIN input field
-      setupStep = 5;
-      return new uc.RequestUserInput({ en: "Enter PIN" }, [
-        {
-          id: PIN_FIELD,
-          label: { en: "8-digit PIN from your TV" },
-          field: { text: { value: "" } }
-        }
-      ]);
+    if (setupOAuthStep === 4) {
+      setupOAuthStep = 5;
+      return showPINInput();
     }
 
     return new uc.SetupError();
   }
 
   if (msg instanceof uc.UserDataResponse) {
-    // Step 3: Redirect URL submitted — exchange for accountId
-    if (setupStep === 3) {
-      const redirectUrl = msg.inputValues[REDIRECT_URL_FIELD];
+    const input = msg.inputValues;
+
+    // --- OAuth Step 3: Redirect URL submitted (CHECK FIRST so stale fields can't hijack) ---
+    if (setupOAuthStep === 3 && input[REDIRECT_URL_FIELD] !== undefined) {
+      const redirectUrl = input[REDIRECT_URL_FIELD];
       if (!redirectUrl) {
         console.error("[ps5] Empty redirect URL");
         return new uc.SetupError(uc.IntegrationSetupError.Other);
@@ -227,19 +450,13 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
         return new uc.SetupError(uc.IntegrationSetupError.AuthorizationError);
       }
 
-      // Show PIN instructions
-      setupStep = 4;
-      return new uc.RequestUserConfirmation(
-        { en: "Step 3: Pair with your PlayStation" },
-        {
-          en: "On your PlayStation, navigate to the Remote Play pairing screen:\n\nPS5: Settings > System > Remote Play > Pair Device\nPS4: Settings > Remote Play Connection Settings > Add Device\n\nAn 8-digit PIN will appear on your TV. Make sure your PlayStation is powered on (not in rest mode) and on the same network as your remote."
-        }
-      );
+      setupOAuthStep = 4;
+      return showPINInstructions();
     }
 
-    // Step 5: PIN submitted — discover PS5 and register
-    if (setupStep === 5) {
-      const pin = msg.inputValues[PIN_FIELD];
+    // --- OAuth Step 5: PIN submitted ---
+    if (setupOAuthStep === 5 && input[PIN_FIELD] !== undefined) {
+      const pin = input[PIN_FIELD];
       if (!pin || !/^\d{8}$/.test(pin.trim())) {
         console.error("[ps5] Invalid PIN (must be 8 digits)");
         return new uc.SetupError(uc.IntegrationSetupError.Other);
@@ -279,15 +496,84 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
         writeCredentials(discovered.id, credentials);
         configurePlayactorHome();
-        setupAccountId = null;
+        resetSetupState();
+
+        // Check actual PS5 state so the entity reflects reality immediately,
+        // without waiting for the next Connect event.
+        const state = await checkPS5State();
+        if (state === "ON") updateState(uc.SwitchStates.On);
+        else if (state === "OFF") updateState(uc.SwitchStates.Off);
+        else updateState(uc.SwitchStates.Unknown);
 
         console.log("[ps5] Registration complete");
         return new uc.SetupComplete();
       } catch (err) {
         console.error("[ps5] Registration failed:", err instanceof Error ? err.message : err);
-        setupAccountId = null;
+        resetSetupState();
         return new uc.SetupError(uc.IntegrationSetupError.Other);
       }
+    }
+
+    // --- Restore flow (from initial setup or reconfigure) ---
+    if (setupMode === "restore" || input.restore_data !== undefined) {
+      const data = input.restore_data ?? input.backup_data;
+      if (!data || !data.trim()) {
+        console.error("[ps5] Empty restore data");
+        return new uc.SetupError(uc.IntegrationSetupError.Other);
+      }
+      if (restoreCredentialsJson(data)) {
+        resetSetupState();
+        // Connect event will run checkPS5State and update entity state.
+        return new uc.SetupComplete();
+      }
+      return new uc.SetupError(uc.IntegrationSetupError.Other);
+    }
+
+    // --- Reconfigure action dropdown (check before backup_data, since backup screens echo back the data) ---
+    const action = String(input.action ?? input.choice ?? "").toLowerCase();
+
+    if (action === "backup") {
+      // Integration Manager sends "[]" as a placeholder requesting the backup textarea.
+      // If the user just submitted the backup screen (echoing the data we showed them), treat as complete.
+      const provided = typeof input.backup_data === "string" ? input.backup_data.trim() : "";
+      if (provided && provided !== "[]") {
+        resetSetupState();
+        return new uc.SetupComplete();
+      }
+      return showBackupScreen();
+    }
+    if (action === "restore") {
+      setupMode = "restore";
+      return showRestoreScreen();
+    }
+    if (action === "delete_config") {
+      deleteCredentials();
+      resetSetupState();
+      return new uc.SetupComplete();
+    }
+    if (action === "configure") {
+      setupMode = "configure";
+      setupOAuthStep = 1;
+      return showPSNLoginScreen();
+    }
+
+    // --- Backup screen submitted without action (user copied data, just complete) ---
+    if (input.backup_data !== undefined) {
+      resetSetupState();
+      return new uc.SetupComplete();
+    }
+
+    // --- Initial setup: route by restore_from_backup dropdown (LAST, so stale values don't hijack) ---
+    if (input.restore_from_backup !== undefined) {
+      const restoreMode = String(input.restore_from_backup).toLowerCase() === "true";
+      if (restoreMode) {
+        setupMode = "restore";
+        return showRestoreScreen();
+      }
+      // User chose "Set up new device" — start OAuth flow
+      setupMode = "configure";
+      setupOAuthStep = 1;
+      return showPSNLoginScreen();
     }
 
     return new uc.SetupError();
@@ -295,7 +581,7 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
   if (msg instanceof uc.AbortDriverSetup) {
     console.log("[ps5] Setup aborted");
-    setupAccountId = null;
+    resetSetupState();
   }
 
   return new uc.SetupError();
@@ -395,7 +681,7 @@ async function standbyPS5(): Promise<void> {
 
 let commandInProgress = false;
 
-const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId: string): Promise<uc.StatusCodes> {
+const cmdHandler: uc.CommandHandler = async function (entity: uc.Entity, cmdId: string): Promise<uc.StatusCodes> {
   console.log(`[ps5] Command received: ${cmdId}`);
 
   if (!hasCredentials()) {
@@ -408,9 +694,17 @@ const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId:
     return uc.StatusCodes.Ok;
   }
 
+  // Resolve toggle to on/off based on current entity state
+  let resolved = cmdId;
+  if (cmdId === "toggle") {
+    const currentState = entity.attributes?.[uc.SwitchAttributes.State];
+    resolved = currentState === uc.SwitchStates.On ? "off" : "on";
+    console.log(`[ps5] Toggle resolved to: ${resolved}`);
+  }
+
   // Fire-and-forget: return Ok immediately so we don't hit the remote's
   // ~10s command timeout. playactor discovery + wake can take longer.
-  switch (cmdId) {
+  switch (resolved) {
     case "on":
       commandInProgress = true;
       wakePS5()
@@ -444,7 +738,7 @@ const cmdHandler: uc.CommandHandler = async function (_entity: uc.Entity, cmdId:
 // ---------------------------------------------------------------------------
 
 const ps5Switch = new uc.Switch(ENTITY_ID, "PlayStation", {
-  features: [uc.SwitchFeatures.OnOff],
+  features: [uc.SwitchFeatures.OnOff, uc.SwitchFeatures.Toggle],
   attributes: {
     [uc.SwitchAttributes.State]: uc.SwitchStates.Off
   }
