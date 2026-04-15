@@ -438,8 +438,8 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
     // --- OAuth Step 5: PIN submitted ---
     if (setupOAuthStep === 5 && input[PIN_FIELD] !== undefined) {
-      const pin = input[PIN_FIELD];
-      if (!pin || !/^\d{8}$/.test(pin.trim())) {
+      const pin = (input[PIN_FIELD] ?? "").replace(/\s+/g, "");
+      if (!/^\d{8}$/.test(pin)) {
         console.error("[ps5] Invalid PIN (must be 8 digits)");
         return new uc.SetupError(uc.IntegrationSetupError.Other);
       }
@@ -458,7 +458,7 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
         const registration = new RemotePlayRegistration();
         const regResult = await registration.register(discovered, {
           accountId: setupAccountId!,
-          pin: pin.trim()
+          pin
         });
 
         const registKey = regResult["PS5-RegistKey"] ?? regResult["PS4-RegistKey"];
