@@ -113,8 +113,18 @@ test("validateBackupJson: rejects an empty object", (t) => {
   }
 });
 
-test("validateBackupJson: rejects a JSON array", (t) => {
+test("validateBackupJson: rejects an empty JSON array", (t) => {
   const result = validateBackupJson("[]");
+  t.false(result.ok);
+  if (!result.ok) {
+    t.is(result.error, "expected JSON object");
+  }
+});
+
+test("validateBackupJson: rejects a non-empty JSON array", (t) => {
+  // Catches the "forgot Array.isArray check" bug: without it, a non-empty
+  // array would slip past the empty-credentials guard and be accepted.
+  const result = validateBackupJson('[{"foo":"bar"}]');
   t.false(result.ok);
   if (!result.ok) {
     t.is(result.error, "expected JSON object");
