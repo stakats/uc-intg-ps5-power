@@ -18,6 +18,7 @@ import { extractAccountId, registKeyToCredential } from "playactor/dist/credenti
 import { RemotePlayRegistration } from "playactor/dist/remoteplay/registration.js";
 import fs from "fs";
 import path from "path";
+import { normalizePIN, extractOAuthCode, validateBackupJson } from "./validation.js";
 
 const __dirname = import.meta.dirname;
 
@@ -70,19 +71,15 @@ function readCredentialsJson(): string | null {
 }
 
 function restoreCredentialsJson(json: string): boolean {
+  const result = validateBackupJson(json);
+  if (!result.ok) {
+    console.error(`[ps5] Restore failed: ${result.error}`);
+    return false;
+  }
   try {
-    const parsed = JSON.parse(json);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      console.error("[ps5] Restore failed: expected JSON object");
-      return false;
-    }
-    if (Object.keys(parsed).length === 0) {
-      console.error("[ps5] Restore failed: empty credentials");
-      return false;
-    }
     const credDir = getPlayactorCredentialsDir();
     fs.mkdirSync(credDir, { recursive: true });
-    fs.writeFileSync(getCredentialsPath(), JSON.stringify(parsed, null, 2), "utf-8");
+    fs.writeFileSync(getCredentialsPath(), JSON.stringify(result.data, null, 2), "utf-8");
     configurePlayactorHome();
     console.log("[ps5] Credentials restored");
     return true;
@@ -414,8 +411,7 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
       }
 
       try {
-        const url = new URL(redirectUrl);
-        const code = url.searchParams.get("code");
+        const code = extractOAuthCode(redirectUrl);
         if (!code) {
           console.error("[ps5] No 'code' parameter in redirect URL");
           return new uc.SetupError(uc.IntegrationSetupError.AuthorizationError);
@@ -438,8 +434,8 @@ async function setupHandler(msg: uc.SetupDriver): Promise<uc.SetupAction> {
 
     // --- OAuth Step 5: PIN submitted ---
     if (setupOAuthStep === 5 && input[PIN_FIELD] !== undefined) {
-      const pin = (input[PIN_FIELD] ?? "").replace(/\s+/g, "");
-      if (!/^\d{8}$/.test(pin)) {
+      const pin = normalizePIN(input[PIN_FIELD]);
+      if (!pin) {
         console.error("[ps5] Invalid PIN (must be 8 digits)");
         return new uc.SetupError(uc.IntegrationSetupError.Other);
       }
