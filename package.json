@@ -1,7 +1,7 @@
 {
   "name": "uc-intg-ps5-power",
   "type": "module",
-  "version": "1.7.1",
+  "version": "1.7.3",
   "description": "Unfolded Circle integration driver for PS5 wake/standby via playactor",
   "main": "dist/src/driver.js",
   "dependencies": {
@@ -24,6 +24,7 @@
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-promise": "^6.6.0",
     "prettier": "^3.3.3",
+    "psn-api": "^2.18.0",
     "ts-node": "^10.9.2",
     "typescript": "5.5.x"
   },

@@ -128,3 +128,6 @@ dist
 artifacts/
 uc-intg-ps5-power.tar.gz
 test-builds/
+
+# Research script transient state
+scripts/.pkce-verifier-*.tmp
