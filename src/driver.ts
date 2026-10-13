@@ -246,7 +246,7 @@ function showBackupScreen(): uc.SetupAction {
       field: {
         label: {
           value: {
-            en: "Copy the data below and save it in a safe place. You can use this to restore your configuration after an integration update."
+            en: "Copy the data below and **save it in a safe place**. You can use this to restore your configuration after an integration update."
           }
         }
       }
@@ -282,8 +282,9 @@ function showRedirectUrlInput(): uc.SetupAction {
         label: {
           value: {
             en:
-              'Open the following URL in a browser on your phone or computer and sign in to your PlayStation Network account. After signing in, you will see a page that just says "redirect" — this is expected.\n\n' +
-              LOGIN_URL
+              "[**Sign in to PlayStation Network**](" +
+              LOGIN_URL +
+              ')\n\nOpen the link above in a browser on your phone or computer and sign in. After signing in, you will see a page that just says "redirect" — this is expected.'
           }
         }
       }
@@ -294,7 +295,7 @@ function showRedirectUrlInput(): uc.SetupAction {
       field: {
         label: {
           value: {
-            en: "After signing in, your browser's address bar will show a URL that looks like:\n\nremoteplay.dl.playstation.net/remoteplay/redirect?code=XXXXX...\n\nCopy the full URL from the address bar and paste it below."
+            en: "After signing in, your browser's address bar will show a URL that looks like:\n\n`remoteplay.dl.playstation.net/remoteplay/redirect?code=XXXXX...`\n\nCopy the **full URL** from the address bar and paste it below."
           }
         }
       }
@@ -315,7 +316,7 @@ function showPINInput(): uc.SetupAction {
       field: {
         label: {
           value: {
-            en: "On your PlayStation, navigate to the Remote Play pairing screen:\n\nPS5: Settings > System > Remote Play > Pair Device\n\nPS4: Settings > Remote Play Connection Settings > Add Device\n\nAn 8-digit PIN will appear on your TV. Make sure your PlayStation is powered on (not in rest mode) and on the same network as your remote."
+            en: "On your PlayStation, navigate to the Remote Play pairing screen:\n\n**PS5:** Settings > System > Remote Play > Pair Device\n\n**PS4:** Settings > Remote Play Connection Settings > Add Device\n\nAn 8-digit PIN will appear on your TV. Make sure your PlayStation is **powered on (not in rest mode)** and on the same network as your remote."
           }
         }
       }
@@ -594,7 +595,8 @@ async function checkPS5State(): Promise<"ON" | "OFF" | null> {
     if (discovered.status === DeviceStatus.AWAKE) return "ON";
     if (discovered.status === DeviceStatus.STANDBY) return "OFF";
     return null;
-  } catch {
+  } catch (err) {
+    console.warn("[ps5] State check failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -631,6 +633,22 @@ async function wakePS5(): Promise<void> {
 }
 
 async function standbyPS5(): Promise<void> {
+  // playactor's openConnection() wakes the console before opening a Remote Play
+  // session (connection.js: openRemotePlay awaits waker.wake() first). Sending
+  // standby to a PS5 that is already asleep would therefore wake it and put it
+  // straight back — visible to the user as the console powering on during an
+  // "off" command. Verify state first and skip entirely unless it's awake.
+  const initialState = await checkPS5State();
+  if (initialState !== "ON") {
+    console.log(
+      initialState === "OFF"
+        ? "[ps5] Already in standby — nothing to do"
+        : "[ps5] PS5 not reachable — skipping standby to avoid waking it"
+    );
+    updateState(uc.SwitchStates.Off);
+    return;
+  }
+
   console.log("[ps5] Sending standby...");
   const connection = await Device.any().openConnection();
   try {
@@ -651,6 +669,19 @@ async function standbyPS5(): Promise<void> {
   console.error("[ps5] Standby not confirmed after rechecks");
   const finalState = await checkPS5State();
   updateState(finalState === "ON" ? uc.SwitchStates.On : uc.SwitchStates.Off);
+}
+
+/**
+ * Re-read the real device state and publish it after a command threw.
+ *
+ * Without this, a thrown wake/standby (e.g. a playactor protocol error) leaves
+ * the entity showing whatever it showed before the command, which then feeds
+ * the next toggle resolution.
+ */
+async function reconcileStateAfterFailure(context: string): Promise<void> {
+  const state = await checkPS5State();
+  console.log(`[ps5] Reconciling state after ${context} failure: ${state}`);
+  updateState(state === "ON" ? uc.SwitchStates.On : uc.SwitchStates.Off);
 }
 
 // ---------------------------------------------------------------------------
@@ -686,8 +717,9 @@ const cmdHandler: uc.CommandHandler = async function (entity: uc.Entity, cmdId: 
     case "on":
       commandInProgress = true;
       wakePS5()
-        .catch((err) => {
+        .catch(async (err) => {
           console.error("[ps5] Wake failed:", err instanceof Error ? err.message : err);
+          await reconcileStateAfterFailure("wake");
         })
         .finally(() => {
           commandInProgress = false;
@@ -697,8 +729,9 @@ const cmdHandler: uc.CommandHandler = async function (entity: uc.Entity, cmdId: 
     case "off":
       commandInProgress = true;
       standbyPS5()
-        .catch((err) => {
+        .catch(async (err) => {
           console.error("[ps5] Standby failed:", err instanceof Error ? err.message : err);
+          await reconcileStateAfterFailure("standby");
         })
         .finally(() => {
           commandInProgress = false;

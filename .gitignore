@@ -128,3 +128,22 @@ dist
 artifacts/
 uc-intg-ps5-power.tar.gz
 test-builds/
+
+# Research script transient state
+scripts/.pkce-verifier-*.tmp
+
+# Research artifacts — DO NOT COMMIT.
+# mitmproxy flow captures contain live PSN credentials: NPSSO tokens, OAuth
+# access/refresh tokens, Sony session cookies and the account ID. This repo is
+# public; committing them would leak working credentials.
+flows
+flows[0-9]*
+*.flows
+*.mitm
+
+# Supporting research material (screenshots, scratch scripts, local handoff notes)
+IMG_*.jpeg
+IMG_*.jpg
+mitm*.png
+scripts/research-*.ts
+HANDOFF-*.md
